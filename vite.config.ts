@@ -7,5 +7,18 @@ export default defineConfig({
   build: {
     target: 'es2020',
     sourcemap: false,
+    rolldownOptions: {
+      output: {
+        // Split heavy deps into their own chunks so the app chunk stays lean
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('lucide-react')) return 'vendor-icons';
+          if (id.includes('/react-dom/') || id.includes('/react/') || id.includes('react-router')) {
+            return 'vendor-react';
+          }
+          return 'vendor';
+        },
+      },
+    },
   },
 })
