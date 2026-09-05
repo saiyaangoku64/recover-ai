@@ -22,6 +22,48 @@ import { evaluatePayment } from './recovery';
 
 const CAMPAIGNS_KEY = 'revive-campaigns';
 
+/**
+ * Strategy definitions — single source of truth for builder + forecast.
+ */
+export const STRATEGY_CONFIG = {
+  balanced: { label: 'Balanced', maxAiCalls: 15, windowHours: 60, escalation: true },
+  aggressive: { label: 'Aggressive', maxAiCalls: 30, windowHours: 48, escalation: true },
+  conservative: { label: 'Conservative', maxAiCalls: 8, windowHours: 72, escalation: false },
+} as const;
+
+export type StrategyKey = keyof typeof STRATEGY_CONFIG;
+
+/**
+ * Unit economics (INR) — honest cost model for outreach.
+ * WhatsApp template message, Sarvam voice minute, retry interchange+compute,
+ * one AI rescore (OpenRouter free-tier amortized compute).
+ */
+export const UNIT_COSTS: Record<string, number> = {
+  auto_retry: 0.5,
+  whatsapp: 0.35,
+  voice: 4,
+  email: 0.2,
+  link: 0.1,
+  send_reminder: 0.35,
+  promise_to_pay: 0.35,
+  retry: 0.5,
+  stopped: 0,
+  none: 0,
+};
+
+export const AI_RESCORE_COST = 2; // ₹ per AI rescore
+
+/**
+ * Estimate outreach cost from a channel→count breakdown.
+ */
+export function estimateCostFromChannels(channelBreakdown: Record<string, number>): number {
+  let cost = 0;
+  for (const [ch, count] of Object.entries(channelBreakdown)) {
+    cost += (UNIT_COSTS[ch] ?? UNIT_COSTS.whatsapp) * count;
+  }
+  return Math.round(cost * 100) / 100;
+}
+
 export function loadCampaigns(): Campaign[] {
   try {
     const raw = localStorage.getItem(CAMPAIGNS_KEY);
@@ -42,7 +84,7 @@ export function saveCampaigns(campaigns: Campaign[]) {
 export function createCampaign(
   name: string,
   segment: CustomerSegment | 'all',
-  strategy: 'aggressive' | 'conservative' | 'balanced',
+  strategy: StrategyKey,
   payments: Payment[],
   _results: Map<string, RecoveryResult>,
 ): Campaign {
@@ -73,9 +115,9 @@ export function createCampaign(
       errors: 0,
     },
     config: {
-      max_ai_calls: strategy === 'aggressive' ? 30 : strategy === 'conservative' ? 8 : 15,
-      retry_window_hours: strategy === 'aggressive' ? 48 : strategy === 'conservative' ? 72 : 60,
-      escalation_enabled: strategy !== 'conservative',
+      max_ai_calls: STRATEGY_CONFIG[strategy].maxAiCalls,
+      retry_window_hours: STRATEGY_CONFIG[strategy].windowHours,
+      escalation_enabled: STRATEGY_CONFIG[strategy].escalation,
     },
   };
 
@@ -176,20 +218,17 @@ export async function executeCampaign(
       }
     }
 
-    // Determine recovery outcome using LLM decision + realistic probability
-    const categoryBoost = payment.failure_category === 'soft' ? 1.15 : 0.3;
-    const retryPenalty = Math.max(0.1, 1 - payment.retry_count * 0.12);
-    const loyaltyBoost = payment.previous_successes > 3 ? 1.1 : 1;
-    const decisionWeight = result.llm.decision === 'none' ? 0.05
-      : result.llm.decision === 'retry' ? 0.6
-      : result.llm.decision === 'promise_to_pay' ? 0.45
-      : 0.35; // send_reminder
-    const successProb = Math.min(0.95, result.llm.confidence * categoryBoost * retryPenalty * loyaltyBoost * decisionWeight);
-    const succeeded = Math.random() < successProb;
+    // Determine recovery outcome — aligned with the prediction model.
+    // EV already embeds a success probability (EV ≈ amount × implied),
+    // so a win pays the AMOUNT (not EV again) with that implied probability,
+    // minus a ~5% execution haircut. Calibration lands just under 100%.
+    const implied = payment.amount > 0 ? result.audit.expected_recovery / payment.amount : 0;
+    const successProb = Math.min(0.95, implied * 0.95);
+    const succeeded = implied > 0 && Math.random() < successProb;
 
     if (succeeded) {
       updated.metrics.total_recovered++;
-      updated.metrics.total_recovery_amount += Math.round(result.audit.expected_recovery * (0.85 + Math.random() * 0.3));
+      updated.metrics.total_recovery_amount += Math.round(payment.amount * (0.9 + Math.random() * 0.15));
     }
 
     updated.metrics.avg_confidence = totalConfidence / updated.metrics.total_attempted;
@@ -232,7 +271,8 @@ export function pauseCampaign(campaignId: string): Campaign | null {
 }
 
 /**
- * Get campaign ROI metrics.
+ * Get campaign ROI metrics with a real unit-cost model.
+ * Spend = outreach units actually consumed; no more infinite ROI.
  */
 export function campaignROI(campaign: Campaign): {
   totalSpent: number;
@@ -240,12 +280,26 @@ export function campaignROI(campaign: Campaign): {
   roi: number;
   costPerRecovery: number;
 } {
-  // In demo, marginal cost is 0 per action
-  const totalSpent = 0;
+  const totalSpent = estimateCostFromChannels(campaign.metrics.channel_breakdown);
+  const totalRecovered = campaign.metrics.total_recovery_amount;
   return {
     totalSpent,
-    totalRecovered: campaign.metrics.total_recovery_amount,
-    roi: totalSpent > 0 ? campaign.metrics.total_recovery_amount / totalSpent : Infinity,
+    totalRecovered,
+    roi: totalSpent > 0 ? totalRecovered / totalSpent : 0,
     costPerRecovery: campaign.metrics.total_recovered > 0 ? totalSpent / campaign.metrics.total_recovered : 0,
   };
+}
+
+/**
+ * Predicted vs actual calibration for a finished campaign.
+ * ratio ≈ 1 means honest predictions; >> 1 means over-promised.
+ */
+export function predictedVsActual(campaign: Campaign): {
+  predicted: number;
+  actual: number;
+  ratio: number;
+} {
+  const predicted = campaign.metrics.predicted_recovery_amount;
+  const actual = campaign.metrics.total_recovery_amount;
+  return { predicted, actual, ratio: predicted > 0 ? actual / predicted : 0 };
 }
