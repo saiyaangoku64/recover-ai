@@ -15,6 +15,7 @@ export interface Payment {
   days_since_failure: number;
   subscription_type: string;
   created_at: string;
+  status?: string;
 }
 
 export interface LLMResult {
@@ -73,7 +74,7 @@ export interface RecoveryResult {
   policy: PolicyResult;
   audit: AuditEvent;
   source: 'ai' | 'heuristic';
-  retryPlan: SmartRetryAttempt[];
+  retryPlan: RetryAttemptPlan[];
   risk: RiskScore;
 }
 

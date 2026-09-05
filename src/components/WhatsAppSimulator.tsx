@@ -118,7 +118,7 @@ export function WhatsAppSimulator({ payment, onClose, onPTPRecorded }: WhatsAppS
     `नमस्ते ${payment.customer_name} जी, आपका पेमेंट अभी भी बकाया है। कृपया जल्द से जल्द भुगतान करें ताकि आपकी सेवाएं बिना रुके चलती रहें।`,
   ];
 
-  const handleToggleVoice = async (replay = false) => {
+  const handleToggleVoice = async () => {
     if (sarvamPlaying) {
       stopSarvamAudio();
       setSarvamPlaying(false);
