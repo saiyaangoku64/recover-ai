@@ -1,10 +1,13 @@
 import { useMemo } from 'react';
-import { ArrowRight, Square, Zap } from 'lucide-react';
+import { Square, Zap } from 'lucide-react';
 import { useRecovery } from '../context/RecoveryContext';
 import { INR, pct, toWords } from '../format';
 import { escalation, paymentLink, razorpayError, webhookPayload } from '../lib/razorpay';
+import { funnelStages, revenueTrend } from '../engine/analytics';
 import { IconWhatsApp } from '../components/Icons';
 import { AnimatedNumber } from '../components/AnimatedNumber';
+import { RevenueChart } from '../components/RevenueChart';
+import { Funnel } from '../components/Funnel';
 import type { RecoveryResult } from '../types';
 
 function pickCases(results: Map<string, RecoveryResult>) {
@@ -34,7 +37,6 @@ export function OverviewPage() {
 
   const atRisk = baseline?.totalAtRisk ?? 0;
   const naive = baseline?.totalRecovered ?? 0;
-  // Value-based recovery rate: what fraction of at-risk INR is recovered
   const recoveryRate = atRisk ? reviveStats.recovered / atRisk : 0;
   const naiveRate = atRisk ? naive / atRisk : 0;
 
@@ -43,101 +45,104 @@ export function OverviewPage() {
     () => [...payments].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at)).slice(0, 6),
     [payments],
   );
-
-  const failureMix = useMemo(() => {
-    const byCategory = { soft: 0, hard: 0 };
-    const byMethod: Record<string, number> = {};
-    for (const p of payments) {
-      byCategory[p.failure_category]++;
-      byMethod[p.method] = (byMethod[p.method] || 0) + 1;
-    }
-    return { byCategory, byMethod };
-  }, [payments]);
+  const trend = useMemo(() => revenueTrend(payments, results), [payments, results]);
+  const funnel = useMemo(() => funnelStages(payments, results), [payments, results]);
 
   return (
     <div className="page-stack">
-      <section className="hero-money">
-        <div className="hero-copy">
-          <p className="hero-kicker">Track 03 · AI Revenue Recovery</p>
-          <h2>Failed payments are not a retry button. They are a diagnosis problem.</h2>
-          <p className="hero-lead">
-            Razorpay Smart Retry would blindly retry soft declines. REVIVE scores the full book, blocks doomed
-            retries, and routes the rest to silent retry, Hinglish WhatsApp, or promise-to-pay — with a policy
-            gate that cannot be overridden.
+      <div className="page-head">
+        <div>
+          <h2 className="page-title">Good evening — here’s the recovery book</h2>
+          <p className="page-sub">
+            {payments.length} failed payments scored · {reviveStats.actioned} engaged · {reviveStats.blocked} stopped by policy
           </p>
         </div>
-        <div className="hero-stat">
-          <span className="hero-stat-label">Expected recovered on this book</span>
-          <span className="hero-stat-value"><AnimatedNumber value={reviveStats.recovered} format={INR} /></span>
-          <span className="hero-stat-hint">
-            {pct(recoveryRate)} of {INR(atRisk)} at risk · {reviveStats.actioned} interventions · {reviveStats.blocked} stopped
-          </span>
+        {batchRunning ? (
+          <button type="button" className="btn-danger" onClick={cancelBatch}>
+            <Square size={14} fill="currentColor" />
+            Stop rescoring · {batchProgress.toFixed(0)}%
+          </button>
+        ) : (
+          <button type="button" className="btn-primary" onClick={runBatch}>
+            <Zap size={14} fill="currentColor" />
+            Rescore book with AI
+          </button>
+        )}
+      </div>
+
+      <section className="st-stats">
+        <div className="st-stat">
+          <span className="st-label">Expected recovery</span>
+          <span className="st-value"><AnimatedNumber value={batchRecovered || reviveStats.recovered} format={INR} /></span>
+          <span className="st-sub up">{pct(recoveryRate)} of at-risk GMV · honest EV</span>
+        </div>
+        <div className="st-stat">
+          <span className="st-label">At-risk GMV</span>
+          <span className="st-value"><AnimatedNumber value={atRisk} format={INR} /></span>
+          <span className="st-sub">{payments.length} failed payments</span>
+        </div>
+        <div className="st-stat">
+          <span className="st-label">Naive retry claims</span>
+          <span className="st-value muted-num"><AnimatedNumber value={naive} format={INR} /></span>
+          <span className="st-sub down">{pct(naiveRate)} claimed · uncollectible</span>
+        </div>
+        <div className="st-stat">
+          <span className="st-label">Waste blocked</span>
+          <span className="st-value"><AnimatedNumber value={reviveStats.blocked} /></span>
+          <span className="st-sub">{INR(reviveStats.blockedAmount)} doomed GMV not chased</span>
         </div>
       </section>
 
-      <div className="vs-grid">
+      {batchRunning && (
+        <div className="batch-progress-wrap slim">
+          <div className="batch-progress-track">
+            <div className="batch-progress-fill" style={{ width: `${batchProgress}%` }} />
+          </div>
+          <div className="batch-progress-label">
+            <span>Rescoring with AI… {batchProgress.toFixed(0)}%</span>
+            <span>{INR(batchRecovered)} recovered so far</span>
+          </div>
+        </div>
+      )}
+
+      <section className="an-grid-main">
+        <div className="card padded-card">
+          <div className="card-header-row">
+            <div>
+              <div className="card-title">Recovered revenue</div>
+              <div className="card-subtitle">Cumulative expected recovery vs at-risk GMV, by failure day</div>
+            </div>
+          </div>
+          <RevenueChart data={trend} />
+        </div>
+        <div className="card padded-card">
+          <div className="card-header-row">
+            <div>
+              <div className="card-title">Recovery funnel</div>
+              <div className="card-subtitle">Value-weighted, policy-gated</div>
+            </div>
+          </div>
+          <Funnel stages={funnel} />
+        </div>
+      </section>
+
+      <div className="vs-grid slim">
         <article className="vs-card naive">
           <div className="vs-card-head">
-            <span className="vs-badge">Naive Smart Retry (claimed)</span>
+            <span className="vs-badge">Naive Smart Retry</span>
             <span className="vs-icon">✕</span>
           </div>
           <strong><AnimatedNumber value={naive} format={INR} /></strong>
-          <p>
-            Flat 80% on every soft decline with retries &lt; 2. {baseline?.actioned ?? 0} blasted retries.
-            That number counts money you will not collect — and customers you will ping after a stolen card.
-          </p>
-          <span className="vs-rate">{pct(naiveRate)} claimed</span>
+          <p>Flat 80% on soft declines with retries &lt; 2 · {baseline?.actioned ?? 0} blasted retries, including stolen cards.</p>
         </article>
         <article className="vs-card revive">
           <div className="vs-card-head">
-            <span className="vs-badge">REVIVE (collectible EV)</span>
+            <span className="vs-badge">REVIVE collectible EV</span>
             <span className="vs-icon">✓</span>
           </div>
           <strong><AnimatedNumber value={reviveStats.recovered} format={INR} /></strong>
-          <p>
-            {reviveStats.retry} silent retries · {reviveStats.whatsapp} WhatsApp / PTP · {reviveStats.blocked} hard
-            stops. {INR(reviveStats.blockedAmount)} doomed GMV not chased · ~{INR(reviveStats.interchangeSaved)} interchange not burned.
-          </p>
-          <span className="vs-rate lift">Honest book · {pct(recoveryRate)} collectible</span>
+          <p>{reviveStats.retry} silent retries · {reviveStats.whatsapp} WhatsApp / PTP · {reviveStats.blocked} hard stops · ~{INR(reviveStats.interchangeSaved)} interchange saved.</p>
         </article>
-      </div>
-
-      <div className="pipeline-row">
-        <div className="pipe-step pipe-step-1">
-          <div className="pipe-num">1</div>
-          <div className="pipe-body">
-            <span>Detect</span>
-            <strong>payment.failed</strong>
-            <em>{payments.length} webhook events</em>
-          </div>
-        </div>
-        <ArrowRight size={18} className="pipe-arrow" />
-        <div className="pipe-step pipe-step-2">
-          <div className="pipe-num">2</div>
-          <div className="pipe-body">
-            <span>Diagnose</span>
-            <strong>Root cause + EV</strong>
-            <em>{failureMix.byCategory.soft} soft · {failureMix.byCategory.hard} hard</em>
-          </div>
-        </div>
-        <ArrowRight size={18} className="pipe-arrow" />
-        <div className="pipe-step pipe-step-3">
-          <div className="pipe-num">3</div>
-          <div className="pipe-body">
-            <span>Gate</span>
-            <strong>6 stopping rules</strong>
-            <em>{reviveStats.blocked} blocked</em>
-          </div>
-        </div>
-        <ArrowRight size={18} className="pipe-arrow" />
-        <div className="pipe-step pipe-step-4">
-          <div className="pipe-num">4</div>
-          <div className="pipe-body">
-            <span>Execute</span>
-            <strong>Retry · WA · voice · PTP</strong>
-            <em>{INR(reviveStats.recovered)} expected</em>
-          </div>
-        </div>
       </div>
 
       <div className="dashboard-grid ops-grid pitch-grid">
@@ -145,7 +150,7 @@ export function OverviewPage() {
           <div className="card-header-row">
             <div>
               <div className="card-title">Webhook inbox</div>
-              <div className="card-subtitle">Sample payment.failed webhook payloads — the agent starts here, not in a spreadsheet</div>
+              <div className="card-subtitle">Live payment.failed payloads — the agent starts here</div>
             </div>
             <span className="card-count">{feed.length}</span>
           </div>
@@ -180,8 +185,8 @@ export function OverviewPage() {
         <div className="card padded-card case-col">
           <div className="card-header-row">
             <div>
-              <div className="card-title">Three recoveries a judge should click</div>
-              <div className="card-subtitle">Hard stop · Hinglish PTP · silent retry — the Track 03 loop on sample rows</div>
+              <div className="card-title">Three recoveries worth clicking</div>
+              <div className="card-subtitle">Hard stop · Hinglish PTP · silent retry</div>
             </div>
           </div>
           <div className="case-list">
@@ -217,69 +222,17 @@ export function OverviewPage() {
         </div>
 
         <div className="card padded-card execute-card">
-          <div className="execute-icon">⚡</div>
           <div className="card-title">Execute</div>
-          <div className="card-subtitle">Measured book + optional LLM rescoring. Hydrated with the same policy gate.</div>
+          <div className="card-subtitle">Measured book + optional LLM rescoring, same policy gate.</div>
           <ul className="exec-list">
             <li>Expected recovery <strong>{INR(batchRecovered || reviveStats.recovered)}</strong></li>
             <li>Payment links issued on WhatsApp / reminder paths</li>
             <li>Quiet stop on stolen / fraud / retry-exhausted</li>
+            <li>Example link <span className="mono-cell">{payments[0] ? paymentLink(payments[0]).slice(-14) : '—'}</span> — issued on execute, not detect</li>
           </ul>
-          <div className="journey-action-bar stacked-actions">
-            {batchRunning ? (
-              <button type="button" className="batch-btn cancel" onClick={cancelBatch}>
-                <Square size={14} fill="#ffffff" />
-                Cancel rescoring {batchProgress.toFixed(0)}%
-              </button>
-            ) : (
-              <button type="button" className="batch-btn" onClick={runBatch}>
-                <Zap size={14} fill="#ffffff" />
-                Rescore book with AI
-              </button>
-            )}
-          </div>
-          {batchRunning && (
-            <div className="batch-progress-wrap">
-              <div className="batch-progress-track">
-                <div className="batch-progress-fill" style={{ width: `${batchProgress}%` }} />
-              </div>
-              <div className="batch-progress-label">
-                <span>{batchProgress.toFixed(0)}% complete</span>
-                <span>{batchRecovered} recovered</span>
-              </div>
-            </div>
-          )}
           <p className="muted exec-note">
             First 8 rows use the LLM when a key is present. The rest stay on the deterministic engine so a demo never stalls.
           </p>
-        </div>
-      </div>
-
-      <div className="kpi-row">
-        <div className="kpi-card kpi-risk">
-          <span className="kpi-label">Amount at risk</span>
-          <span className="kpi-value"><AnimatedNumber value={atRisk} format={INR} /></span>
-          <span className="kpi-hint">{payments.length} failed payments</span>
-        </div>
-        <div className="kpi-card kpi-blocked">
-          <span className="kpi-label">Policy blocked</span>
-          <span className="kpi-value fail"><AnimatedNumber value={reviveStats.blocked} /></span>
-          <span className="kpi-hint">{INR(reviveStats.blockedAmount)} not blasted</span>
-        </div>
-        <div className="kpi-card kpi-ptp">
-          <span className="kpi-label">Open PTP</span>
-          <span className="kpi-value"><AnimatedNumber value={reviveStats.pendingPtpValue} format={INR} /></span>
-          <span className="kpi-hint">{reviveStats.ptpCount} commitments</span>
-        </div>
-        <div className="kpi-card kpi-channel">
-          <span className="kpi-label">WhatsApp / voice</span>
-          <span className="kpi-value"><AnimatedNumber value={reviveStats.whatsapp + reviveStats.voice} /></span>
-          <span className="kpi-hint">Hinglish recovery channel</span>
-        </div>
-        <div className="kpi-card kpi-link">
-          <span className="kpi-label">Example payment link</span>
-          <span className="kpi-value linkish">{payments[0] ? paymentLink(payments[0]).slice(-14) : '—'}</span>
-          <span className="kpi-hint">Issued on execute, not on detect</span>
         </div>
       </div>
     </div>

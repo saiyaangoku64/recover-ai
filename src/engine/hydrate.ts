@@ -1,11 +1,14 @@
 import type { Payment, PolicyConfig, RecoveryResult } from '../types';
 import { heuristicDecision } from './llm';
 import { checkPolicy } from './policy';
+import { buildRetryPlan } from './smartRetry';
+import { scoreRisk } from './risk';
 
 export function evaluateSync(
   payment: Payment,
   policyConfig: PolicyConfig,
   merchantId?: string | null,
+  book?: Payment[],
 ): RecoveryResult {
   const llm = heuristicDecision(payment);
   const policy = checkPolicy(payment, llm, policyConfig);
@@ -17,6 +20,8 @@ export function evaluateSync(
     llm,
     policy,
     source: 'heuristic',
+    retryPlan: buildRetryPlan(payment),
+    risk: scoreRisk(payment, book),
     audit: {
       payment_id: payment.id,
       amount: payment.amount,
@@ -52,6 +57,8 @@ export function hydrateBatch(
       next.set(payment.id, {
         ...cur,
         policy,
+        retryPlan: buildRetryPlan(payment),
+        risk: scoreRisk(payment, payments),
         audit: {
           ...cur.audit,
           decision: finalDecision,
@@ -68,7 +75,7 @@ export function hydrateBatch(
         },
       });
     } else {
-      next.set(payment.id, evaluateSync(payment, policyConfig, merchantId));
+      next.set(payment.id, evaluateSync(payment, policyConfig, merchantId, payments));
     }
   }
 

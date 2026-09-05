@@ -6,6 +6,7 @@ import { AppShell } from './components/layout/AppShell';
 import { RequireAuth } from './components/layout/RequireAuth';
 import { LoginPage } from './pages/LoginPage';
 import { OverviewPage } from './pages/OverviewPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 import { QueuePage } from './pages/QueuePage';
 import { PaymentsPage } from './pages/PaymentsPage';
 import { PtpPage } from './pages/PtpPage';
@@ -31,6 +32,7 @@ export default function App() {
                 }
               >
                 <Route path="/" element={<OverviewPage />} />
+                <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/queue" element={<QueuePage />} />
                 <Route path="/payments" element={<PaymentsPage />} />
                 <Route path="/ptp" element={<PtpPage />} />

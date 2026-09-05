@@ -1,11 +1,14 @@
 import type { Payment, LLMResult, RecoveryResult, AuditEvent, PolicyConfig } from '../types';
 import { callLLM, heuristicDecision } from './llm';
 import { checkPolicy, DEFAULT_POLICY } from './policy';
+import { buildRetryPlan } from './smartRetry';
+import { scoreRisk } from './risk';
 
 /**
  * Full recovery pipeline: LLM → Policy Gate → Audit Event
  * mode = 'ai' uses real LLM, 'heuristic' uses deterministic fallback
  * Self-contained: if LLM fails, falls back to heuristic automatically
+ * Every result carries a Smart-Retry plan + Radar risk screen.
  */
 export async function evaluatePayment(
   payment: Payment,
@@ -13,6 +16,7 @@ export async function evaluatePayment(
   mode: 'ai' | 'heuristic' = 'ai',
   policyConfig: PolicyConfig = DEFAULT_POLICY,
   merchantId?: string | null,
+  book?: Payment[],
 ): Promise<RecoveryResult> {
   let llm: LLMResult;
   let source: 'ai' | 'heuristic' = mode === 'ai' && apiKey ? 'ai' : 'heuristic';
@@ -55,5 +59,7 @@ export async function evaluatePayment(
     policy,
     audit,
     source,
+    retryPlan: buildRetryPlan(payment),
+    risk: scoreRisk(payment, book),
   };
 }

@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   Activity,
+  BarChart3,
   ClipboardList,
   Handshake,
   LayoutDashboard,
@@ -22,6 +23,7 @@ import { useState } from 'react';
 
 const NAV = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/queue', label: 'Queue', icon: ClipboardList },
   { to: '/payments', label: 'Payments', icon: Activity },
   { to: '/ptp', label: 'Promise-to-pay', icon: Handshake },

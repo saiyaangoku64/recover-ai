@@ -24,6 +24,9 @@ export interface LLMResult {
   expected_recovery_value: number;
   recovery_channel: 'auto_retry' | 'whatsapp' | 'voice' | null;
   ptp_due_date?: string;
+  root_cause?: string;
+  recoverability?: number;
+  recommended_timing?: string;
 }
 
 export interface PolicyResult {
@@ -70,6 +73,8 @@ export interface RecoveryResult {
   policy: PolicyResult;
   audit: AuditEvent;
   source: 'ai' | 'heuristic';
+  retryPlan: SmartRetryAttempt[];
+  risk: RiskScore;
 }
 
 export interface PaymentsSource {
@@ -185,4 +190,83 @@ export interface AnalyticsSnapshot {
   calibration_error: number;
   roi_score: number;
   segment_breakdown: Record<CustomerSegment, { count: number; value: number; recovery_rate: number }>;
+}
+
+// --- Stripe-grade recovery intelligence ---
+
+export type RetryStrategy = 'silent_retry' | 'customer_action' | 'update_method' | 'abstain';
+
+export interface RetryAttemptPlan {
+  attempt: number;
+  dayOffset: number;
+  scheduledFor: string; // ISO date
+  window: string;       // e.g. "02:00–05:00 IST · low-load window"
+  channel: 'auto' | 'whatsapp' | 'link';
+  rationale: string;
+}
+
+export interface DeclinePlaybook {
+  reason: string;
+  retryable: boolean;
+  strategy: RetryStrategy;
+  maxAttempts: number;
+  schedule: Omit<RetryAttemptPlan, 'attempt' | 'scheduledFor'>[];
+  rationale: string;
+  recoveryPrior: number; // base probability the playbook assumes
+}
+
+export interface RiskSignal {
+  id: string;
+  label: string;
+  weight: number;
+}
+
+export interface RiskScore {
+  score: number; // 0–100
+  level: 'low' | 'elevated' | 'high';
+  signals: RiskSignal[];
+}
+
+export type DunningChannel = 'email' | 'whatsapp' | 'voice' | 'sms';
+
+export interface DunningStage {
+  stage: number;
+  dayOffset: number;
+  channel: DunningChannel;
+  subject: string;
+  template: string;
+  tone: 'gentle' | 'firm' | 'final';
+}
+
+export interface DunningSequence {
+  id: string;
+  name: string;
+  audience: string;
+  stages: DunningStage[];
+}
+
+export interface ReasonIntel {
+  reason: string;
+  category: 'hard' | 'soft';
+  count: number;
+  value: number;
+  recoveredEV: number;
+  recoveryRate: number;
+  actioned: number;
+  strategy: RetryStrategy;
+}
+
+export interface TrendPoint {
+  date: string;
+  label: string;
+  atRisk: number;
+  recovered: number;
+}
+
+export interface FunnelStage {
+  id: string;
+  label: string;
+  count: number;
+  value: number;
+  conversion: number; // fraction of previous stage
 }

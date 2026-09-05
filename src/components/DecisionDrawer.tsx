@@ -2,10 +2,14 @@ import { Check, ShieldCheck, Volume2, X, Brain, ExternalLink } from 'lucide-reac
 import { useCallback, useEffect, useState } from 'react';
 import { useRecovery } from '../context/RecoveryContext';
 import { inspectPolicyRules } from '../engine/policy';
+import { buildRetryPlan, getPlaybook } from '../engine/smartRetry';
+import { scoreRisk } from '../engine/risk';
 import { INR, fmtDate, pct, toWords } from '../format';
 import { escalation, paymentLink, razorpayError, webhookPayload } from '../lib/razorpay';
 import { useEscape } from '../hooks/useEscape';
 import { IconWhatsApp } from './Icons';
+import { RiskBadge } from './RiskBadge';
+import { RetryTimeline } from './RetryTimeline';
 
 export function DecisionDrawer() {
   const {
@@ -46,6 +50,9 @@ export function DecisionDrawer() {
   const err = razorpayError(selectedPayment.failure_reason);
   const link = paymentLink(selectedPayment);
   const canExecute = result && result.policy.result === 'passed' && result.audit.decision !== 'none';
+  const risk = result?.risk ?? scoreRisk(selectedPayment);
+  const playbook = getPlaybook(selectedPayment.failure_reason);
+  const retryPlan = result?.retryPlan ?? buildRetryPlan(selectedPayment);
 
   return (
     <div className={`drawer-overlay ${closing ? 'closing' : ''}`} onClick={close}>
@@ -96,6 +103,25 @@ export function DecisionDrawer() {
           {isEvaluating && !result && (
             <div className="drawer-skeleton">Evaluating payment through AI + policy gate…</div>
           )}
+
+          <div className="risk-strip">
+            <div className="risk-strip-head">
+              <span className="section-label">Radar risk screen</span>
+              <RiskBadge risk={risk} />
+            </div>
+            {risk.signals.length > 0 ? (
+              <ul className="risk-signals">
+                {risk.signals.map((s) => (
+                  <li key={s.id}>
+                    <span>{s.label}</span>
+                    <em>+{s.weight}</em>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">No fraud or abuse signals — clean to engage.</p>
+            )}
+          </div>
 
           <div className="policy-gate-card">
             <div className="policy-card-title">
@@ -153,7 +179,26 @@ export function DecisionDrawer() {
           <div className="diagnosis-box">
             <strong>Diagnosis:</strong>{' '}
             {result?.llm.reason || (isEvaluating ? 'Waiting for model output…' : 'Evaluate this payment to see the diagnosis.')}
+            {result?.llm.root_cause && (
+              <div className="diag-chips">
+                <span className="diag-chip">Root cause · {result.llm.root_cause}</span>
+                {result.llm.recoverability !== undefined && (
+                  <span className="diag-chip">Recoverability · {pct(result.llm.recoverability)}</span>
+                )}
+                {result.llm.recommended_timing && (
+                  <span className="diag-chip">Timing · {result.llm.recommended_timing}</span>
+                )}
+              </div>
+            )}
             <div className="case-esc">{escalation(result)}</div>
+          </div>
+
+          <div className="retry-card">
+            <div className="retry-card-head">
+              <span className="section-label">Smart retry plan</span>
+              <span className="muted">{playbook.reason.replace(/_/g, ' ')} playbook</span>
+            </div>
+            <RetryTimeline plan={retryPlan} strategy={playbook.strategy} />
           </div>
 
           <div className="rzp-meta">

@@ -1,15 +1,25 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { Payment } from '../types';
 import { useRecovery } from '../context/RecoveryContext';
+import { scoreRisk } from '../engine/risk';
 import { INR, customerEmail, decisionClass, toWords } from '../format';
+import { RiskBadge } from './RiskBadge';
 
 interface PaymentsTableProps {
   rows: Payment[];
 }
 
 function PaymentsTableInner({ rows }: PaymentsTableProps) {
-  const { results, evaluating, selectedPayment, handleEvaluate } = useRecovery();
+  const { results, payments, evaluating, selectedPayment, handleEvaluate } = useRecovery();
+
+  const riskById = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof scoreRisk>>();
+    for (const p of rows) {
+      map.set(p.id, results.get(p.id)?.risk ?? scoreRisk(p, payments));
+    }
+    return map;
+  }, [rows, results, payments]);
 
   if (rows.length === 0) {
     return (
@@ -31,6 +41,7 @@ function PaymentsTableInner({ rows }: PaymentsTableProps) {
             <th>Method</th>
             <th>Failure</th>
             <th>Category</th>
+            <th>Risk</th>
             <th>Decision</th>
             <th>Policy</th>
             <th>Recovery value</th>
@@ -64,6 +75,9 @@ function PaymentsTableInner({ rows }: PaymentsTableProps) {
                   <span className={`tag-badge ${p.failure_category === 'hard' ? 'blocked' : 'retry'}`}>
                     {p.failure_category}
                   </span>
+                </td>
+                <td>
+                  {riskById.get(p.id) ? <RiskBadge risk={riskById.get(p.id)!} compact /> : '—'}
                 </td>
                 <td>
                   {isEvaluatingThis ? (

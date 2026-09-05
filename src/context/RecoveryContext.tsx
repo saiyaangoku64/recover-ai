@@ -252,6 +252,7 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
           openrouterKey ? 'ai' : 'heuristic',
           policyConfig,
           merchantId,
+          payments,
         );
         setResults((prev) => new Map(prev).set(p.id, result));
         setLastEvaluatedAt(new Date());
@@ -262,7 +263,7 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.warn('Evaluation fallback:', err);
-        const result = await evaluatePayment(p, '', 'heuristic', policyConfig, merchantId);
+        const result = await evaluatePayment(p, '', 'heuristic', policyConfig, merchantId, payments);
         setResults((prev) => new Map(prev).set(p.id, result));
         setLastEvaluatedAt(new Date());
         try {
@@ -278,7 +279,7 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [results, evaluating, openrouterKey, policyConfig, merchantId],
+    [results, evaluating, openrouterKey, policyConfig, merchantId, payments],
   );
 
   const evaluateSelected = useCallback(async () => {
@@ -312,6 +313,7 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
           useAI ? 'ai' : 'heuristic',
           policyConfig,
           merchantId,
+          payments,
         );
         batchResults.set(p.id, res);
         setResults((prev) => new Map(prev).set(p.id, res));
@@ -320,7 +322,7 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
           try { await writeAuditEvent(res.audit); } catch { /* decision stored */ }
         }
       } catch {
-        const res = await evaluatePayment(p, '', 'heuristic', policyConfig, merchantId);
+        const res = await evaluatePayment(p, '', 'heuristic', policyConfig, merchantId, payments);
         batchResults.set(p.id, res);
         setResults((prev) => new Map(prev).set(p.id, res));
         recovered += res.audit.expected_recovery;
