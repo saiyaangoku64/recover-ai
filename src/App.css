@@ -2866,8 +2866,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 
 .webhook-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 10px;
   width: 100%;
   text-align: left;
   padding: 10px 12px;
@@ -2885,16 +2886,24 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 
 .webhook-row-left {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
   min-width: 0;
   flex: 1;
+}
+.webhook-row-left .mono-cell {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .webhook-row-right {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
   flex-shrink: 0;
 }
 
@@ -2904,12 +2913,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 
 .webhook-code {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
   color: #b45309;
   background: #fff7ed;
   padding: 3px 8px;
   border-radius: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .webhook-json {
@@ -4489,4 +4502,153 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 @media (max-width: 900px) {
   .forecast-grid { grid-template-columns: repeat(2, 1fr); }
   .campaign-item-header { flex-direction: column; align-items: flex-start; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   IN-PHONE CHECKOUT SHEET — customer pays without leaving chat
+   ══════════════════════════════════════════════════════════════ */
+
+.wa-avatar-initial {
+  font-size: 17px;
+  font-weight: 800;
+  color: #008069;
+}
+.wa-pay-powered {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #008069;
+  background: #e7fce9;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.wa-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 20, 26, 0.5);
+  display: flex;
+  align-items: flex-end;
+  z-index: 60;
+  animation: waFadeIn 0.18s ease-out;
+}
+.wa-pay-sheet {
+  width: 100%;
+  background: #ffffff;
+  border-radius: 20px 20px 0 0;
+  padding: 10px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: waSheetUp 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+  max-height: 88%;
+  overflow-y: auto;
+}
+@keyframes waSheetUp {
+  from { transform: translateY(60px); opacity: 0.5; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes waFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.wa-sheet-grip {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: #d1d7db;
+  align-self: center;
+}
+.wa-sheet-merchant {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wa-sheet-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e7fce9;
+  color: #008069;
+  font-size: 18px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.wa-sheet-merchant-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.wa-sheet-merchant-info strong { font-size: 13.5px; color: #111b21; }
+.wa-sheet-merchant-info span { font-size: 11px; color: #667781; }
+.wa-sheet-amount { font-size: 19px; font-weight: 800; color: #111b21; font-variant-numeric: tabular-nums; }
+.wa-sheet-tabs {
+  display: flex;
+  background: #f0f2f5;
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+.wa-sheet-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #667781;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.wa-sheet-tab.active { background: #ffffff; color: #008069; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.wa-sheet-input {
+  width: 100%;
+  border: 1px solid #d1d7db;
+  border-radius: 10px;
+  padding: 11px 13px;
+  font-size: 14px;
+  color: #111b21;
+  outline: none;
+  box-sizing: border-box;
+}
+.wa-sheet-input:focus { border-color: #008069; box-shadow: 0 0 0 2px rgba(0, 128, 105, 0.12); }
+.wa-sheet-row { display: flex; gap: 8px; }
+.wa-sheet-hint { font-size: 11px; color: #667781; margin: 0; }
+.wa-sheet-pay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: #008069;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+}
+.wa-sheet-pay:disabled { background: #a8c9c2; cursor: not-allowed; }
+.wa-sheet-secure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: #667781;
+  font-weight: 600;
+}
+.wa-sheet-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 10px 14px;
+  text-align: center;
+}
+.wa-sheet-status strong { font-size: 16px; color: #111b21; }
+.wa-sheet-status span { font-size: 12px; color: #667781; }
+.wa-spin { animation: waSpin 0.9s linear infinite; }
+@keyframes waSpin {
+  to { transform: rotate(360deg); }
 }

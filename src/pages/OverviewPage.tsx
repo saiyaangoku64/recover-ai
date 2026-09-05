@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Square, Zap } from 'lucide-react';
 import { useRecovery } from '../context/RecoveryContext';
 import { INR, pct, toWords } from '../format';
-import { escalation, paymentLink, razorpayError, webhookPayload } from '../lib/razorpay';
+import { escalation, razorpayError, webhookPayload } from '../lib/razorpay';
 import { funnelStages, revenueTrend } from '../engine/analytics';
 import { IconWhatsApp } from '../components/Icons';
 import { AnimatedNumber } from '../components/AnimatedNumber';
@@ -228,10 +228,9 @@ export function OverviewPage() {
             <li>Expected recovery <strong>{INR(batchRecovered || reviveStats.recovered)}</strong></li>
             <li>Payment links issued on WhatsApp / reminder paths</li>
             <li>Quiet stop on stolen / fraud / retry-exhausted</li>
-            <li>Example link <span className="mono-cell">{payments[0] ? paymentLink(payments[0]).slice(-14) : '—'}</span> — issued on execute, not detect</li>
           </ul>
           <p className="muted exec-note">
-            First 8 rows use the LLM when a key is present. The rest stay on the deterministic engine so a demo never stalls.
+            LLM rescoring on tap; the deterministic engine covers the rest so scoring never stalls.
           </p>
         </div>
       </div>

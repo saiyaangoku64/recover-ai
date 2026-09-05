@@ -13,7 +13,6 @@ import { PtpPage } from './pages/PtpPage';
 import { PolicyPage } from './pages/PolicyPage';
 import { AuditPage } from './pages/AuditPage';
 import { CampaignsPage } from './pages/CampaignsPage';
-import { CheckoutPage } from './pages/CheckoutPage';
 import './App.css';
 
 export default function App() {
@@ -40,14 +39,6 @@ export default function App() {
                 <Route path="/audit" element={<AuditPage />} />
                 <Route path="/campaigns" element={<CampaignsPage />} />
               </Route>
-              <Route
-                path="/checkout/:paymentId"
-                element={
-                  <RecoveryProvider>
-                    <CheckoutPage />
-                  </RecoveryProvider>
-                }
-              />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

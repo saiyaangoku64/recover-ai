@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useEscape } from '../hooks/useEscape';
 import type { Payment } from '../types';
-import { IconRazorpay, IconVerified } from './Icons';
+import { IconVerified } from './Icons';
 import { generateSarvamVoice, playSarvamAudio, stopSarvamAudio, type SarvamFemaleVoice } from '../engine/sarvam';
 import { updatePTPStatus } from '../lib/supabase';
 import { useRecovery } from '../context/RecoveryContext';
@@ -17,6 +16,8 @@ import {
   Volume2,
   Clock,
   CheckCheck,
+  CheckCircle2,
+  Loader2,
   CreditCard,
   Sparkles,
   ShieldCheck,
@@ -32,8 +33,7 @@ interface WhatsAppSimulatorProps {
 export function WhatsAppSimulator({ payment, onClose, onPTPRecorded }: WhatsAppSimulatorProps) {
   const close = useCallback(() => onClose(), [onClose]);
   useEscape(close);
-  const navigate = useNavigate();
-  const { sarvamVoice, setSarvamVoice } = useRecovery();
+  const { sarvamVoice, setSarvamVoice, setPaymentStatus } = useRecovery();
   const [sarvamLoading, setSarvamLoading] = useState(false);
   const [sarvamPlaying, setSarvamPlaying] = useState(false);
   const [sarvamProgress, setSarvamProgress] = useState(0);
@@ -81,6 +81,16 @@ export function WhatsAppSimulator({ payment, onClose, onPTPRecorded }: WhatsAppS
   const [ptpRegistered, setPtpRegistered] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [inputReply, setInputReply] = useState('');
+
+  // In-phone checkout sheet state
+  const [payStep, setPayStep] = useState<'closed' | 'form' | 'processing' | 'done'>('closed');
+  const [payTab, setPayTab] = useState<'upi' | 'card'>('upi');
+  const [upiId, setUpiId] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [processingText, setProcessingText] = useState('Contacting your bank…');
+  const [txnId, setTxnId] = useState('');
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const sarvamKey = import.meta.env.VITE_SARVAM_API_KEY || '';
@@ -200,10 +210,55 @@ export function WhatsAppSimulator({ payment, onClose, onPTPRecorded }: WhatsAppS
     }
   };
 
-  // Quick Action: Complete Payment Now — navigates to Razorpay-style checkout
+  // Quick Action: Complete Payment Now — opens the in-phone checkout sheet
   const handlePayNow = () => {
-    close();
-    navigate(`/checkout/${payment.id}`);
+    setPayStep('form');
+  };
+
+  const canSheetPay = () => {
+    if (payTab === 'upi') return upiId.includes('@');
+    return (
+      cardNumber.replace(/\s/g, '').length >= 12 &&
+      cardExpiry.replace(/\D/g, '').length >= 4 &&
+      cardCvv.length >= 3
+    );
+  };
+
+  const handleSheetPay = async () => {
+    if (!canSheetPay()) return;
+    const txn = `pay_${Date.now().toString(36).toUpperCase()}`;
+    setTxnId(txn);
+    setPayStep('processing');
+    setProcessingText(payTab === 'upi' ? 'Sending collect request…' : 'Contacting your bank…');
+    await new Promise((r) => setTimeout(r, 1100));
+    setProcessingText('Confirming payment…');
+    await new Promise((r) => setTimeout(r, 1100));
+
+    setPaymentStatus(payment.id, 'recovered');
+    setPtpRegistered(true);
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `paid-${Date.now()}`,
+        sender: 'biz',
+        text: `Payment of ₹${payment.amount.toLocaleString('en-IN')} received — dhanyavaad ${payment.customer_name.split(' ')[0]} ji! Receipt: ${txn}.`,
+        time: timeStr,
+      },
+    ]);
+    try {
+      await updatePTPStatus(payment.id, 'kept');
+      onPTPRecorded?.(payment.id);
+    } catch {
+      /* local-only */
+    }
+    setPayStep('done');
+  };
+
+  const handleSheetDone = () => {
+    setPayStep('closed');
+    showToast('Payment recovered');
   };
 
   // Send custom reply
@@ -257,16 +312,16 @@ export function WhatsAppSimulator({ payment, onClose, onPTPRecorded }: WhatsAppS
         <div className="wa-app-bar">
           <div className="wa-contact-info">
             <div className="wa-avatar-badge">
-              <IconRazorpay width="20" height="20" />
+              <span className="wa-avatar-initial">{(payment.merchant || 'M')[0]}</span>
             </div>
             <div className="wa-name-col">
               <div className="wa-verified-title">
-                <span>Razorpay Recovery</span>
+                <span>{payment.merchant || 'Merchant'} Support</span>
                 <IconVerified width="14" height="14" />
               </div>
               <div className="wa-subtext">
                 <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#25d366', marginRight: 4 }} />
-                Online · Official Merchant Desk
+                Online · replies instantly
               </div>
             </div>
           </div>
@@ -353,10 +408,10 @@ export function WhatsAppSimulator({ payment, onClose, onPTPRecorded }: WhatsAppS
                 <div className="wa-payment-embedded-card">
                   <div className="wa-pay-card-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <IconRazorpay width="14" height="14" />
-                      <span>Razorpay Trusted Checkout</span>
+                      <ShieldCheck size={14} color="#34d399" />
+                      <span>Secure checkout</span>
                     </div>
-                    <ShieldCheck size={14} color="#34d399" />
+                    <span className="wa-pay-powered">REVIVE</span>
                   </div>
 
                   <div className="wa-pay-card-body">
@@ -371,7 +426,7 @@ export function WhatsAppSimulator({ payment, onClose, onPTPRecorded }: WhatsAppS
                       className="wa-pay-cta-btn"
                       onClick={handlePayNow}
                     >
-                      Pay ₹{payment.amount.toLocaleString('en-IN')} with Razorpay →
+                      Pay ₹{payment.amount.toLocaleString('en-IN')} →
                     </button>
                   </div>
                 </div>
@@ -401,16 +456,16 @@ export function WhatsAppSimulator({ payment, onClose, onPTPRecorded }: WhatsAppS
               title="Record customer Promise-to-Pay and save to Supabase"
             >
               <Sparkles size={12} color="#059669" />
-              <span>{ptpRegistered ? '✓ PTP Recorded in Supabase' : 'Promise to Pay Tomorrow (PTP)'}</span>
+              <span>{ptpRegistered ? '✓ PTP recorded' : 'Promise to Pay Tomorrow (PTP)'}</span>
             </button>
 
             <button
               className="wa-chip-btn"
               onClick={handlePayNow}
-              title="Open Razorpay Checkout"
+              title="Open secure checkout"
             >
               <CreditCard size={12} color="#3b66f5" />
-              <span>Pay with Razorpay</span>
+              <span>Pay now</span>
             </button>
 
             <button
@@ -471,6 +526,119 @@ export function WhatsAppSimulator({ payment, onClose, onPTPRecorded }: WhatsAppS
             <Send size={15} />
           </button>
         </form>
+
+        {/* In-phone checkout sheet */}
+        {payStep !== 'closed' && (
+          <div className="wa-sheet-scrim" onClick={() => { if (payStep === 'form') setPayStep('closed'); }}>
+            <div className="wa-pay-sheet" onClick={(e) => e.stopPropagation()}>
+              {payStep === 'form' && (
+                <>
+                  <div className="wa-sheet-grip" />
+                  <div className="wa-sheet-merchant">
+                    <div className="wa-sheet-avatar">{(payment.merchant || 'M')[0]}</div>
+                    <div className="wa-sheet-merchant-info">
+                      <strong>{payment.merchant || 'Merchant Store'}</strong>
+                      <span>Order #{payment.id.slice(0, 8).toUpperCase()}</span>
+                    </div>
+                    <div className="wa-sheet-amount">₹{payment.amount.toLocaleString('en-IN')}</div>
+                  </div>
+                  <div className="wa-sheet-tabs">
+                    <button
+                      type="button"
+                      className={`wa-sheet-tab ${payTab === 'upi' ? 'active' : ''}`}
+                      onClick={() => setPayTab('upi')}
+                    >
+                      UPI
+                    </button>
+                    <button
+                      type="button"
+                      className={`wa-sheet-tab ${payTab === 'card' ? 'active' : ''}`}
+                      onClick={() => setPayTab('card')}
+                    >
+                      Card
+                    </button>
+                  </div>
+                  {payTab === 'upi' ? (
+                    <>
+                      <input
+                        type="text"
+                        className="wa-sheet-input"
+                        placeholder="yourname@okhdfc"
+                        value={upiId}
+                        onChange={(e) => setUpiId(e.target.value.trim())}
+                        autoFocus
+                      />
+                      <p className="wa-sheet-hint">A collect request will be sent to this UPI ID</p>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        className="wa-sheet-input"
+                        placeholder="Card number"
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim())}
+                        maxLength={19}
+                        autoFocus
+                      />
+                      <div className="wa-sheet-row">
+                        <input
+                          type="text"
+                          className="wa-sheet-input"
+                          placeholder="MM/YY"
+                          value={cardExpiry}
+                          onChange={(e) => {
+                            const d = e.target.value.replace(/\D/g, '').slice(0, 4);
+                            setCardExpiry(d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d);
+                          }}
+                          maxLength={5}
+                        />
+                        <input
+                          type="password"
+                          className="wa-sheet-input"
+                          placeholder="CVV"
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                          maxLength={4}
+                        />
+                      </div>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    className="wa-sheet-pay"
+                    disabled={!canSheetPay()}
+                    onClick={handleSheetPay}
+                  >
+                    <Lock size={13} />
+                    Pay ₹{payment.amount.toLocaleString('en-IN')}
+                  </button>
+                  <div className="wa-sheet-secure">
+                    <ShieldCheck size={12} color="#25d366" />
+                    <span>256-bit encrypted · powered by REVIVE</span>
+                  </div>
+                </>
+              )}
+              {payStep === 'processing' && (
+                <div className="wa-sheet-status">
+                  <Loader2 size={40} color="#008069" className="wa-spin" />
+                  <strong>{processingText}</strong>
+                  <span>Do not close this window</span>
+                </div>
+              )}
+              {payStep === 'done' && (
+                <div className="wa-sheet-status">
+                  <CheckCircle2 size={52} color="#25d366" />
+                  <strong>₹{payment.amount.toLocaleString('en-IN')} paid</strong>
+                  <span>Receipt {txnId} · {payTab === 'upi' ? upiId : `Card ••${cardNumber.replace(/\s/g, '').slice(-4)}`}</span>
+                  <button type="button" className="wa-sheet-pay" onClick={handleSheetDone}>
+                    Done
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Floating Toast Notification */}
         {toastMessage && (

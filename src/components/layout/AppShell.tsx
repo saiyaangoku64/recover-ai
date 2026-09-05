@@ -46,7 +46,6 @@ export function AppShell() {
     lastEvaluatedAt,
     openrouterKey,
     sarvamKey,
-    sourceLabel,
     auditLog,
     waModalPayment,
     setWaModalPayment,
@@ -109,17 +108,16 @@ export function AppShell() {
             </p>
           </div>
           <div className="nav-badges">
-            <span className={`status-badge ${isSupabaseConfigured() ? 'live' : 'simulated'}`}>
-              {isSupabaseConfigured() ? `Audit live (${auditLog.length})` : 'Local audit'}
+            <span className={`status-badge ${isSupabaseConfigured() ? 'live' : 'simulated'}`} title={`${auditLog.length} audit events`}>
+              {isSupabaseConfigured() ? 'Audit live' : 'Local audit'}
             </span>
-            <span className={`status-badge ${openrouterKey ? 'model' : 'simulated'}`}>
-              {openrouterKey ? 'AI connected' : 'Heuristic only'}
+            <span className={`status-badge ${openrouterKey ? 'model' : 'simulated'}`} title={openrouterKey ? 'LLM decisions via OpenRouter' : 'Deterministic engine (no LLM key)'}>
+              {openrouterKey ? 'AI connected' : 'Heuristic mode'}
             </span>
-            <span className={`status-badge ${sarvamKey ? 'voice' : 'simulated'}`}>
+            <span className={`status-badge ${sarvamKey ? 'voice' : 'simulated'}`} title={sarvamKey ? 'Sarvam neural Hindi voice' : 'Browser text-to-speech'}>
               <Volume2 size={12} />
-              {sarvamKey ? 'Sarvam connected' : 'Browser TTS'}
+              {sarvamKey ? 'Voice ready' : 'Browser TTS'}
             </span>
-            <span className="status-badge simulated">{sourceLabel}</span>
             {configured && (
               <button type="button" className="ghost-btn" onClick={() => signOut()} aria-label="Sign out">
                 <LogOut size={14} />
